@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Оценки по математике</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Оценки по математике</h1>
+
+        <!--Главный экран-->
+        <div id="mainScreen" class="screen active">
+            <button onclick="showTeacherLogin()">Я учитель</button>
+            <button onclick="showStudentLogin()">Я ученик</button>
+        </div>
+
+        <!--Вход учителя-->
+        <div id="teacherLogin" class="screen">
+            <h2>Вход для учителя</h2>
+            <input type="text" id="teacherName" placeholder="Ваше имя">
+            <button onclick="loginTeacher()">Войти</button>
+            <button onclick="showMainScreen()">Назад</button>
+        </div>
+
+        <!--Панель учителя-->
+        <div id="teacherPanel" class="screen">
+            <h2>Панель учителя</h2>
+            <p>Добро пожаловать, <span id="teacherUserName"></span>!</p>
+            
+            <div class="section">
+                <h3>Создать группу</h3>
+                <input type="text" id="groupName" placeholder="Название группы">
+                <button onclick="createGroup()">Создать</button>
+                <div id="groupCodeDisplay"></div>
+            </div>
+
+            <div class="section">
+                <h3>Мои группы</h3>
+                <div id="groupsList"></div>
+            </div>
+
+            <button onclick="logout()">Выйти</button>
+        </div>
+
+        <!--Просмотр группы-->
+        <div id="groupView" class="screen">
+            <h2 id="groupViewTitle"></h2>
+            <div id="studentsInGroup"></div>
+            <button onclick="backToTeacherPanel()">Назад к группам</button>
+        </div>
+
+        <!--Вход ученика-->
+        <div id="studentLogin" class="screen">
+            <h2>Вход для ученика</h2>
+            <input type="text" id="studentName" placeholder="Ваше имя">
+            <input type="text" id="groupCodeInput" placeholder="Код группы">
+            <button onclick="joinGroup()">Войти</button>
+            <button onclick="showMainScreen()">Назад</button>
+        </div>
+
+        <!--Панель ученика-->
+        <div id="studentPanel" class="screen">
+            <h2>Панель ученика</h2>
+            <div id="studentInfo"></div>
+            <div id="gradesList"></div>
+            <button onclick="logout()">Выйти</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
