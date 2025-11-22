@@ -1,9 +1,27 @@
-// Хранилище данных
+// Конфигурация Firebase
+const firebaseConfig = {
+    apiKey: "your-api-key",
+    authDomain: "your-project.firebaseapp.com",
+    projectId: "your-project-id",
+    storageBucket: "your-project.appspot.com",
+    messagingSenderId: "123456789",
+    appId: "your-app-id"
+};
+
+// Инициализация Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// Хранилище данных (кеш для оффлайн работы)
 let teachers = JSON.parse(localStorage.getItem('mathTeachers')) || {};
 let groups = JSON.parse(localStorage.getItem('mathGroups')) || {};
 let currentTeacher = '';
 let currentStudent = '';
 let currentGroupCode = '';
+
+// Флаги для отслеживания состояния синхронизации
+let isOnline = navigator.onLine;
+let pendingSync = [];
 
 // Показать главный экран
 function showMainScreen() {
@@ -24,7 +42,7 @@ function showStudentLogin() {
 }
 
 // Вход учителя
-function loginTeacher() {
+async function loginTeacher() {
     const teacherName = document.getElementById('teacherName').value.trim();
     
     if (!teacherName) {
@@ -34,22 +52,86 @@ function loginTeacher() {
 
     currentTeacher = teacherName;
     
-    // Сохраняем учителя если его нет
-    if (!teachers[teacherName]) {
-        teachers[teacherName] = {
-            groups: []
-        };
-        saveTeachers();
-    }
+    try {
+        // Пытаемся загрузить данные из облака
+        await loadTeacherFromCloud(teacherName);
+        
+        // Если учителя нет в облаке, создаем локально
+        if (!teachers[teacherName]) {
+            teachers[teacherName] = {
+                groups: [],
+                lastSync: new Date().toISOString()
+            };
+            await saveTeachers();
+        }
 
-    hideAllScreens();
-    document.getElementById('teacherPanel').classList.add('active');
-    document.getElementById('teacherUserName').textContent = teacherName;
-    loadGroupsList();
+        hideAllScreens();
+        document.getElementById('teacherPanel').classList.add('active');
+        document.getElementById('teacherUserName').textContent = teacherName;
+        await loadGroupsList();
+        
+    } catch (error) {
+        console.error('Ошибка входа:', error);
+        alert('Ошибка загрузки данных. Работаем в оффлайн режиме.');
+        
+        // Оффлайн режим
+        if (!teachers[teacherName]) {
+            teachers[teacherName] = {
+                groups: [],
+                lastSync: new Date().toISOString()
+            };
+            saveTeachersToLocal();
+        }
+        
+        hideAllScreens();
+        document.getElementById('teacherPanel').classList.add('active');
+        document.getElementById('teacherUserName').textContent = teacherName;
+        loadGroupsList();
+    }
+}
+
+// Загрузить учителя из облака
+async function loadTeacherFromCloud(teacherName) {
+    if (!isOnline) return;
+    
+    try {
+        const teacherDoc = await db.collection('teachers').doc(teacherName).get();
+        if (teacherDoc.exists) {
+            const cloudData = teacherDoc.data();
+            teachers[teacherName] = {
+                ...cloudData,
+                lastSync: new Date().toISOString()
+            };
+            
+            // Загружаем группы учителя из облака
+            for (const groupCode of cloudData.groups || []) {
+                await loadGroupFromCloud(groupCode);
+            }
+            
+            saveAllToLocal();
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки из облака:', error);
+        throw error;
+    }
+}
+
+// Загрузить группу из облака
+async function loadGroupFromCloud(groupCode) {
+    if (!isOnline) return;
+    
+    try {
+        const groupDoc = await db.collection('groups').doc(groupCode).get();
+        if (groupDoc.exists) {
+            groups[groupCode] = groupDoc.data();
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки группы:', error);
+    }
 }
 
 // Создать группу
-function createGroup() {
+async function createGroup() {
     const groupName = document.getElementById('groupName').value.trim();
     
     if (!groupName) {
@@ -61,35 +143,139 @@ function createGroup() {
     const groupCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     
     // Создание группы
-    groups[groupCode] = {
+    const newGroup = {
         name: groupName,
         teacher: currentTeacher,
         students: {},
-        createdAt: new Date().toLocaleDateString()
+        createdAt: new Date().toISOString(),
+        lastModified: new Date().toISOString()
     };
+
+    groups[groupCode] = newGroup;
 
     // Добавляем группу учителю
     teachers[currentTeacher].groups.push(groupCode);
+    teachers[currentTeacher].lastModified = new Date().toISOString();
 
-    saveGroups();
-    saveTeachers();
+    try {
+        await saveAllData();
+        
+        // Показываем код
+        document.getElementById('groupCodeDisplay').innerHTML = `
+            <div class="code-display">
+                Код группы: ${groupCode}
+            </div>
+            <p>Дайте этот код ученикам</p>
+        `;
 
-    // Показываем код
-    document.getElementById('groupCodeDisplay').innerHTML = `
-        <div class="code-display">
-            Код группы: ${groupCode}
-        </div>
-        <p>Дайте этот код ученикам</p>
-    `;
+        document.getElementById('groupName').value = '';
+        await loadGroupsList();
+        
+    } catch (error) {
+        console.error('Ошибка сохранения:', error);
+        alert('Группа создана локально. Данные синхронизируются при подключении.');
+        
+        saveAllToLocal();
+        document.getElementById('groupCodeDisplay').innerHTML = `
+            <div class="code-display">
+                Код группы: ${groupCode}
+            </div>
+            <p>Дайте этот код ученикам</p>
+            <p style="color: orange;">⚠ Оффлайн режим</p>
+        `;
+        document.getElementById('groupName').value = '';
+        loadGroupsList();
+    }
+}
 
-    document.getElementById('groupName').value = '';
-    loadGroupsList();
+// Сохранить все данные (облако + локально)
+async function saveAllData() {
+    // Сохраняем локально
+    saveAllToLocal();
+    
+    // Сохраняем в облако если онлайн
+    if (isOnline) {
+        await saveAllToCloud();
+    } else {
+        // Добавляем в очередь синхронизации
+        addToSyncQueue();
+    }
+}
+
+// Сохранить все данные в облако
+async function saveAllToCloud() {
+    if (!isOnline) return;
+    
+    try {
+        const batch = db.batch();
+        
+        // Сохраняем учителя
+        if (currentTeacher && teachers[currentTeacher]) {
+            const teacherRef = db.collection('teachers').doc(currentTeacher);
+            batch.set(teacherRef, {
+                ...teachers[currentTeacher],
+                lastSync: new Date().toISOString()
+            });
+        }
+        
+        // Сохраняем все группы учителя
+        if (currentTeacher && teachers[currentTeacher].groups) {
+            for (const groupCode of teachers[currentTeacher].groups) {
+                if (groups[groupCode]) {
+                    const groupRef = db.collection('groups').doc(groupCode);
+                    batch.set(groupRef, {
+                        ...groups[groupCode],
+                        lastModified: new Date().toISOString()
+                    });
+                }
+            }
+        }
+        
+        await batch.commit();
+        console.log('Данные сохранены в облако');
+        
+    } catch (error) {
+        console.error('Ошибка сохранения в облако:', error);
+        throw error;
+    }
+}
+
+// Сохранить все данные локально
+function saveAllToLocal() {
+    localStorage.setItem('mathTeachers', JSON.stringify(teachers));
+    localStorage.setItem('mathGroups', JSON.stringify(groups));
+}
+
+// Добавить в очередь синхронизации
+function addToSyncQueue() {
+    const syncItem = {
+        type: 'teacher_update',
+        teacher: currentTeacher,
+        timestamp: new Date().toISOString()
+    };
+    
+    pendingSync.push(syncItem);
+    localStorage.setItem('pendingSync', JSON.stringify(pendingSync));
+}
+
+// Синхронизировать данные при подключении
+async function syncData() {
+    if (!isOnline || pendingSync.length === 0) return;
+    
+    try {
+        await saveAllToCloud();
+        pendingSync = [];
+        localStorage.removeItem('pendingSync');
+        console.log('Данные синхронизированы');
+    } catch (error) {
+        console.error('Ошибка синхронизации:', error);
+    }
 }
 
 // Загрузить список групп
 function loadGroupsList() {
     const groupsList = document.getElementById('groupsList');
-    const teacherGroups = teachers[currentTeacher].groups || [];
+    const teacherGroups = teachers[currentTeacher]?.groups || [];
 
     if (teacherGroups.length === 0) {
         groupsList.innerHTML = '<p>У вас пока нет групп</p>';
@@ -138,7 +324,6 @@ function viewGroup(groupCode) {
         
         let gradesHtml = '';
         if (studentData.grades && studentData.grades.length > 0) {
-            // Оценки с темами через запятую
             gradesHtml = studentData.grades.map(grade => 
                 `${grade.value} (${grade.topic || 'Без темы'})`
             ).join(', ');
@@ -160,7 +345,7 @@ function viewGroup(groupCode) {
 }
 
 // Добавить оценку
-function addGrade(studentName) {
+async function addGrade(studentName) {
     const gradeInput = document.getElementById(`grade-${studentName}`);
     const topicInput = document.getElementById(`topic-${studentName}`);
     const grade = parseInt(gradeInput.value);
@@ -175,11 +360,20 @@ function addGrade(studentName) {
         groups[currentGroupCode].students[studentName].grades.push({
             value: grade,
             topic: topic,
-            date: new Date().toLocaleDateString()
+            date: new Date().toISOString()
         });
         
-        saveGroups();
-        viewGroup(currentGroupCode); // Обновляем вид
+        groups[currentGroupCode].lastModified = new Date().toISOString();
+        
+        try {
+            await saveAllData();
+            viewGroup(currentGroupCode);
+        } catch (error) {
+            console.error('Ошибка сохранения:', error);
+            alert('Оценка добавлена локально. Синхронизация при подключении.');
+            saveAllToLocal();
+            viewGroup(currentGroupCode);
+        }
     } else {
         alert('Введите оценку от 2 до 5!');
     }
@@ -188,16 +382,24 @@ function addGrade(studentName) {
 }
 
 // Удалить группу
-function deleteGroup(groupCode) {
+async function deleteGroup(groupCode) {
     if (confirm('Удалить эту группу?')) {
         // Удаляем группу у учителя
         teachers[currentTeacher].groups = teachers[currentTeacher].groups.filter(code => code !== groupCode);
+        teachers[currentTeacher].lastModified = new Date().toISOString();
+        
         // Удаляем саму группу
         delete groups[groupCode];
         
-        saveGroups();
-        saveTeachers();
-        loadGroupsList();
+        try {
+            await saveAllData();
+            loadGroupsList();
+        } catch (error) {
+            console.error('Ошибка удаления:', error);
+            alert('Группа удалена локально. Синхронизация при подключении.');
+            saveAllToLocal();
+            loadGroupsList();
+        }
     }
 }
 
@@ -208,7 +410,7 @@ function backToTeacherPanel() {
 }
 
 // Вход ученика в группу
-function joinGroup() {
+async function joinGroup() {
     const studentName = document.getElementById('studentName').value.trim();
     const groupCode = document.getElementById('groupCodeInput').value.toUpperCase();
     
@@ -217,9 +419,21 @@ function joinGroup() {
         return;
     }
     
+    // Сначала проверяем локально
     if (!groups[groupCode]) {
-        alert('Группа не найдена!');
-        return;
+        // Если нет локально, пробуем загрузить из облака
+        if (isOnline) {
+            try {
+                await loadGroupFromCloud(groupCode);
+            } catch (error) {
+                console.error('Ошибка загрузки группы:', error);
+            }
+        }
+        
+        if (!groups[groupCode]) {
+            alert('Группа не найдена!');
+            return;
+        }
     }
     
     // Регистрируем ученика в группе
@@ -227,7 +441,14 @@ function joinGroup() {
         groups[groupCode].students[studentName] = {
             grades: []
         };
-        saveGroups();
+        groups[groupCode].lastModified = new Date().toISOString();
+        
+        try {
+            await saveAllData();
+        } catch (error) {
+            console.error('Ошибка сохранения:', error);
+            saveAllToLocal();
+        }
     }
     
     currentStudent = studentName;
@@ -253,11 +474,9 @@ function loadStudentInfo() {
     `;
     
     if (studentData.grades && studentData.grades.length > 0) {
-        // Считаем средний балл
         const totalGrade = studentData.grades.reduce((sum, grade) => sum + grade.value, 0);
         const averageGrade = (totalGrade / studentData.grades.length).toFixed(2);
         
-        // Создаем список оценок с темами через запятую
         let gradesHtml = '';
         studentData.grades.forEach((grade, index) => {
             gradesHtml += `
@@ -265,7 +484,7 @@ function loadStudentInfo() {
                     <span class="grade-with-topic">
                         ${grade.value} (${grade.topic})
                     </span>
-                    <small style="color: #666; margin-left: 10px;">${grade.date}</small>
+                    <small style="color: #666; margin-left: 10px;">${new Date(grade.date).toLocaleDateString()}</small>
                 </div>
             `;
         });
@@ -290,22 +509,45 @@ function logout() {
     showMainScreen();
 }
 
-// Сохранить данные
-function saveTeachers() {
-    localStorage.setItem('mathTeachers', JSON.stringify(teachers));
-}
-
-function saveGroups() {
-    localStorage.setItem('mathGroups', JSON.stringify(groups));
-}
-
 // Скрыть все экраны
 function hideAllScreens() {
     const screens = document.querySelectorAll('.screen');
     screens.forEach(screen => screen.classList.remove('active'));
 }
 
-// Запуск
-showMainScreen();
+// Обработчики онлайн/оффлайн статуса
+window.addEventListener('online', function() {
+    isOnline = true;
+    console.log('Онлайн, синхронизируем данные...');
+    syncData();
+});
+
+window.addEventListener('offline', function() {
+    isOnline = false;
+    console.log('Оффлайн режим');
+});
+
+// Инициализация при загрузке
+document.addEventListener('DOMContentLoaded', function() {
+    // Загружаем очередь синхронизации
+    pendingSync = JSON.parse(localStorage.getItem('pendingSync')) || [];
+    
+    // Пытаемся синхронизировать при загрузке если онлайн
+    if (isOnline && pendingSync.length > 0) {
+        syncData();
+    }
+    
+    showMainScreen();
+});
+
+// Старые функции для совместимости
+function saveTeachers() {
+    saveAllToLocal();
+}
+
+function saveGroups() {
+    saveAllToLocal();
+}
+
 
 
