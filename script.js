@@ -139,7 +139,10 @@ function viewGroup(groupCode) {
         let gradesHtml = '';
         if (studentData.grades && studentData.grades.length > 0) {
             gradesHtml = studentData.grades.map(grade => 
-                `<span class="grade-item">${grade}</span>`
+                `<span class="grade-with-topic">
+                    ${grade.value}
+                    <span class="topic-badge">${grade.topic || 'Без темы'}</span>
+                </span>`
             ).join('');
         } else {
             gradesHtml = '<p>Оценок нет</p>';
@@ -148,8 +151,9 @@ function viewGroup(groupCode) {
         studentElement.innerHTML = `
             <h4>${studentName}</h4>
             <div>Оценки: ${gradesHtml}</div>
-            <div style="margin-top: 10px;">
+            <div class="grade-inputs">
                 <input type="number" id="grade-${studentName}" class="grade-input" min="1" max="5" placeholder="5">
+                <input type="text" id="topic-${studentName}" class="topic-input" placeholder="Тема (например: Дроби)">
                 <button class="add-grade-btn" onclick="addGrade('${studentName}')">Добавить</button>
             </div>
         `;
@@ -160,19 +164,29 @@ function viewGroup(groupCode) {
 // Добавить оценку
 function addGrade(studentName) {
     const gradeInput = document.getElementById(`grade-${studentName}`);
+    const topicInput = document.getElementById(`topic-${studentName}`);
     const grade = parseInt(gradeInput.value);
+    const topic = topicInput.value.trim() || 'Без темы';
     
     if (grade >= 1 && grade <= 5) {
         if (!groups[currentGroupCode].students[studentName].grades) {
             groups[currentGroupCode].students[studentName].grades = [];
         }
-        groups[currentGroupCode].students[studentName].grades.push(grade);
+        
+        // Добавляем оценку с темой
+        groups[currentGroupCode].students[studentName].grades.push({
+            value: grade,
+            topic: topic,
+            date: new Date().toLocaleDateString()
+        });
+        
         saveGroups();
         viewGroup(currentGroupCode); // Обновляем вид
     } else {
         alert('Введите оценку от 1 до 5!');
     }
     gradeInput.value = '';
+    topicInput.value = '';
 }
 
 // Удалить группу
@@ -241,12 +255,29 @@ function loadStudentInfo() {
     `;
     
     if (studentData.grades && studentData.grades.length > 0) {
-        const averageGrade = (studentData.grades.reduce((a, b) => a + b, 0) / studentData.grades.length).toFixed(2);
+        // Считаем средний балл
+        const totalGrade = studentData.grades.reduce((sum, grade) => sum + grade.value, 0);
+        const averageGrade = (totalGrade / studentData.grades.length).toFixed(2);
+        
+        // Создаем список оценок с темами
+        let gradesHtml = '';
+        studentData.grades.forEach(grade => {
+            gradesHtml += `
+                <div class="grade-details">
+                    <span class="grade-with-topic">
+                        ${grade.value}
+                        <span class="topic-badge">${grade.topic}</span>
+                    </span>
+                    <small style="color: #666; margin-left: 10px;">${grade.date}</small>
+                </div>
+            `;
+        });
+        
         gradesList.innerHTML = `
             <div class="section">
                 <h3>Мои оценки</h3>
                 <p>Средний балл: <strong>${averageGrade}</strong></p>
-                <div>${studentData.grades.map(grade => `<span class="grade-item">${grade}</span>`).join('')}</div>
+                <div>${gradesHtml}</div>
             </div>
         `;
     } else {
@@ -262,7 +293,7 @@ function logout() {
     showMainScreen();
 }
 
-//Сохранение данных
+// Сохранить данные
 function saveTeachers() {
     localStorage.setItem('mathTeachers', JSON.stringify(teachers));
 }
