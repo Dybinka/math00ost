@@ -1,502 +1,281 @@
-// Система управления пользователями и оценками
-class GradeManager {
-    constructor() {
-        this.users = JSON.parse(localStorage.getItem('mathGradesUsers')) || [];
-        this.grades = JSON.parse(localStorage.getItem('mathGrades')) || [];
-        this.currentUser = null;
-        this.userType = null;
-        this.init();
+// Хранилище данных
+let teachers = JSON.parse(localStorage.getItem('mathTeachers')) || {};
+let groups = JSON.parse(localStorage.getItem('mathGroups')) || {};
+let currentTeacher = '';
+let currentStudent = '';
+let currentGroupCode = '';
+
+// Показать главный экран
+function showMainScreen() {
+    hideAllScreens();
+    document.getElementById('mainScreen').classList.add('active');
+}
+
+// Показать вход для учителя
+function showTeacherLogin() {
+    hideAllScreens();
+    document.getElementById('teacherLogin').classList.add('active');
+}
+
+// Показать вход для ученика
+function showStudentLogin() {
+    hideAllScreens();
+    document.getElementById('studentLogin').classList.add('active');
+}
+
+// Вход учителя
+function loginTeacher() {
+    const teacherName = document.getElementById('teacherName').value.trim();
+    
+    if (!teacherName) {
+        alert('Введите ваше имя!');
+        return;
     }
 
-    init() {
-        this.setMinDate();
-        this.setupEventListeners();
-        this.checkAuth();
-    }
-
-    setupEventListeners() {
-        // Авторизация
-        document.getElementById('loginFormElement').addEventListener('submit', (e) => this.handleLogin(e));
-        document.getElementById('registerFormElement').addEventListener('submit', (e) => this.handleRegister(e));
-        
-        // Переключение вкладок авторизации
-        document.querySelectorAll('.auth-tab').forEach(tab => {
-            tab.addEventListener('click', (e) => this.switchAuthTab(e.target.dataset.form));
-        });
-
-        // Выбор типа пользователя при регистрации
-        document.querySelectorAll('.user-type-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => this.setUserType(e.target.dataset.type));
-        });
-
-        // Переключение видимости пароля
-        document.querySelectorAll('.toggle-password').forEach(btn => {
-            btn.addEventListener('click', (e) => this.togglePasswordVisibility(e.target));
-        });
-
-        // Управление оценками
-        document.getElementById('gradeForm').addEventListener('submit', (e) => this.handleAddGrade(e));
-        document.getElementById('searchInput').addEventListener('input', () => this.filterGrades());
-        document.getElementById('clearFilters').addEventListener('click', () => this.clearFilters());
-        document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
-
-        // Обработчик для удаления оценок
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('delete-grade')) {
-                this.deleteGrade(e.target.dataset.id);
-            }
-        });
-    }
-
-    // Авторизация и регистрация
-    switchAuthTab(formType) {
-        document.querySelectorAll('.auth-tab').forEach(tab => tab.classList.remove('active'));
-        document.querySelectorAll('.auth-form').forEach(form => form.classList.remove('active'));
-        
-        document.querySelector(`.auth-tab[data-form="${formType}"]`).classList.add('active');
-        document.getElementById(`${formType}Form`).classList.add('active');
-    }
-
-    setUserType(type) {
-        this.userType = type;
-        document.querySelectorAll('.user-type-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelector(`.user-type-btn[data-type="${type}"]`).classList.add('active');
-    }
-
-    togglePasswordVisibility(button) {
-        const input = button.parentElement.querySelector('input');
-        if (input.type === 'password') {
-            input.type = 'text';
-            button.textContent = '👁️‍🗨️';
-        } else {
-            input.type = 'password';
-            button.textContent = '👁️';
-        }
-    }
-
-    handleLogin(e) {
-        e.preventDefault();
-        this.hideAllErrors();
-
-        const email = document.getElementById('loginEmail').value.trim();
-        const password = document.getElementById('loginPassword').value;
-
-        if (!this.validateLogin(email, password)) {
-            return;
-        }
-
-        const user = this.users.find(u => u.email === email && u.password === password);
-        if (!user) {
-            this.showError('loginPasswordError', 'Неверный email или пароль');
-            return;
-        }
-
-        this.currentUser = user;
-        this.showApp();
-        this.showNotification(`Добро пожаловать, ${user.name}!`, 'success');
-    }
-
-    handleRegister(e) {
-        e.preventDefault();
-        this.hideAllErrors();
-
-        const email = document.getElementById('registerEmail').value.trim();
-        const name = document.getElementById('registerName').value.trim();
-        const password = document.getElementById('registerPassword').value;
-        const passwordConfirm = document.getElementById('registerPasswordConfirm').value;
-
-        if (!this.validateRegister(email, name, password, passwordConfirm)) {
-            return;
-        }
-
-        const newUser = {
-            id: Date.now().toString(),
-            email,
-            name,
-            password,
-            type: this.userType || 'student',
-            createdAt: new Date().toISOString()
+    currentTeacher = teacherName;
+    
+    // Сохраняем учителя если его нет
+    if (!teachers[teacherName]) {
+        teachers[teacherName] = {
+            groups: []
         };
-
-        this.users.push(newUser);
-        this.saveUsers();
-        
-        this.currentUser = newUser;
-        this.showApp();
-        this.showNotification('Регистрация успешна!', 'success');
+        saveTeachers();
     }
 
-    validateLogin(email, password) {
-        let isValid = true;
+    hideAllScreens();
+    document.getElementById('teacherPanel').classList.add('active');
+    document.getElementById('teacherUserName').textContent = teacherName;
+    loadGroupsList();
+}
 
-        if (!email) {
-            this.showError('loginEmailError', 'Введите email');
-            isValid = false;
-        }
-
-        if (!password) {
-            this.showError('loginPasswordError', 'Введите пароль');
-            isValid = false;
-        }
-
-        return isValid;
+// Создать группу
+function createGroup() {
+    const groupName = document.getElementById('groupName').value.trim();
+    
+    if (!groupName) {
+        alert('Введите название группы!');
+        return;
     }
 
-    validateRegister(email, name, password, passwordConfirm) {
-        let isValid = true;
+    // Генерация кода
+    const groupCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    // Создание группы
+    groups[groupCode] = {
+        name: groupName,
+        teacher: currentTeacher,
+        students: {},
+        createdAt: new Date().toLocaleDateString()
+    };
 
-        if (!this.userType) {
-            this.showNotification('Выберите тип пользователя', 'error');
-            isValid = false;
-        }
+    // Добавляем группу учителю
+    teachers[currentTeacher].groups.push(groupCode);
 
-        if (!email) {
-            this.showError('registerEmailError', 'Введите email');
-            isValid = false;
-        } else if (this.users.find(u => u.email === email)) {
-            this.showError('registerEmailError', 'Пользователь с таким email уже существует');
-            isValid = false;
-        }
+    saveGroups();
+    saveTeachers();
 
-        if (!name) {
-            this.showError('registerNameError', 'Введите ФИО');
-            isValid = false;
-        }
+    // Показываем код
+    document.getElementById('groupCodeDisplay').innerHTML = `
+        <div class="code-display">
+            Код группы: ${groupCode}
+        </div>
+        <p>Дайте этот код ученикам</p>
+    `;
 
-        if (!password) {
-            this.showError('registerPasswordError', 'Введите пароль');
-            isValid = false;
-        } else if (password.length < 6) {
-            this.showError('registerPasswordError', 'Пароль должен содержать минимум 6 символов');
-            isValid = false;
-        }
+    document.getElementById('groupName').value = '';
+    loadGroupsList();
+}
 
-        if (!passwordConfirm) {
-            this.showError('registerPasswordConfirmError', 'Подтвердите пароль');
-            isValid = false;
-        } else if (password !== passwordConfirm) {
-            this.showError('registerPasswordConfirmError', 'Пароли не совпадают');
-            isValid = false;
-        }
+// Загрузить список групп
+function loadGroupsList() {
+    const groupsList = document.getElementById('groupsList');
+    const teacherGroups = teachers[currentTeacher].groups || [];
 
-        return isValid;
+    if (teacherGroups.length === 0) {
+        groupsList.innerHTML = '<p>У вас пока нет групп</p>';
+        return;
     }
 
-    // Управление оценками
-    handleAddGrade(e) {
-        e.preventDefault();
-        
-        if (this.currentUser.type !== 'teacher') {
-            this.showNotification('Только учителя могут добавлять оценки', 'error');
-            return;
-        }
+    groupsList.innerHTML = '';
+    teacherGroups.forEach(groupCode => {
+        const group = groups[groupCode];
+        if (!group) return;
 
-        const studentName = document.getElementById('studentName').value.trim();
-        const grade = document.getElementById('grade').value;
-        const topic = document.getElementById('topic').value.trim();
-        const date = document.getElementById('date').value;
-
-        if (!this.validateGradeForm(studentName, grade, topic, date)) {
-            return;
-        }
-
-        const newGrade = {
-            id: Date.now().toString(),
-            studentName,
-            grade: parseInt(grade),
-            topic,
-            date,
-            teacher: this.currentUser.name,
-            createdAt: new Date().toISOString()
-        };
-
-        this.addGrade(newGrade);
-        this.resetGradeForm();
-        this.showNotification('Оценка успешно добавлена!', 'success');
-    }
-
-    validateGradeForm(studentName, grade, topic, date) {
-        if (!studentName) {
-            this.showNotification('Введите ФИО ученика', 'error');
-            return false;
-        }
-
-        if (!grade) {
-            this.showNotification('Выберите оценку', 'error');
-            return false;
-        }
-
-        if (!topic) {
-            this.showNotification('Введите тему работы', 'error');
-            return false;
-        }
-
-        if (!date) {
-            this.showNotification('Выберите дату', 'error');
-            return false;
-        }
-
-        return true;
-    }
-
-    addGrade(grade) {
-        this.grades.unshift(grade);
-        this.saveGrades();
-        this.loadGrades();
-    }
-
-    deleteGrade(id) {
-        if (this.currentUser.type !== 'teacher') {
-            this.showNotification('Только учителя могут удалять оценки', 'error');
-            return;
-        }
-
-        if (confirm('Вы уверены, что хотите удалить эту оценку?')) {
-            this.grades = this.grades.filter(grade => grade.id !== id);
-            this.saveGrades();
-            this.loadGrades();
-            this.showNotification('Оценка удалена', 'success');
-        }
-    }
-
-    filterGrades() {
-        const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-        let filteredGrades = this.grades;
-
-        // Если пользователь - ученик, показываем только его оценки
-        if (this.currentUser.type === 'student') {
-            filteredGrades = filteredGrades.filter(grade => 
-                grade.studentName.toLowerCase().includes(this.currentUser.name.toLowerCase())
-            );
-        }
-
-        // Применяем поиск
-        if (searchTerm) {
-            filteredGrades = filteredGrades.filter(grade => 
-                grade.studentName.toLowerCase().includes(searchTerm) ||
-                grade.topic.toLowerCase().includes(searchTerm)
-            );
-        }
-
-        this.renderGrades(filteredGrades);
-    }
-
-    clearFilters() {
-        document.getElementById('searchInput').value = '';
-        this.loadGrades();
-    }
-
-    loadGrades() {
-        let gradesToShow = this.grades;
-
-        // Для учеников показываем только их оценки
-        if (this.currentUser.type === 'student') {
-            gradesToShow = gradesToShow.filter(grade => 
-                grade.studentName.toLowerCase().includes(this.currentUser.name.toLowerCase())
-            );
-            document.getElementById('gradesListTitle').textContent = 'Мои оценки';
-        } else {
-            document.getElementById('gradesListTitle').textContent = 'Журнал оценок';
-        }
-
-        this.renderGrades(gradesToShow);
-        this.updateStats();
-    }
-
-    renderGrades(grades) {
-        const container = document.getElementById('gradesContainer');
-        
-        if (grades.length === 0) {
-            container.innerHTML = '<div class="no-grades">Оценки не найдены</div>';
-            return;
-        }
-
-        container.innerHTML = grades.map(grade => `
-            <div class="grade-item">
-                <div class="grade-info">
-                    <div class="student-name">${this.escapeHtml(grade.studentName)}</div>
-                    <div class="grade-details">
-                        ${this.escapeHtml(grade.topic)} • ${this.formatDate(grade.date)}
-                        ${grade.teacher ? ` • Преподаватель: ${this.escapeHtml(grade.teacher)}` : ''}
-                    </div>
-                </div>
-                <div class="grade-actions">
-                    <span class="grade-value grade-${grade.grade}">${grade.grade}</span>
-                    ${this.currentUser.type === 'teacher' ? 
-                        `<button class="btn-danger delete-grade" data-id="${grade.id}">Удалить</button>` : 
-                        ''
-                    }
-                </div>
-            </div>
-        `).join('');
-    }
-
-    updateStats() {
-        let gradesToCalculate = this.grades;
-
-        // Для учеников считаем статистику только по их оценкам
-        if (this.currentUser.type === 'student') {
-            gradesToCalculate = gradesToCalculate.filter(grade => 
-                grade.studentName.toLowerCase().includes(this.currentUser.name.toLowerCase())
-            );
-        }
-
-        if (gradesToCalculate.length === 0) {
-            this.resetStats();
-            return;
-        }
-
-        const total = gradesToCalculate.length;
-        const sum = gradesToCalculate.reduce((acc, grade) => acc + grade.grade, 0);
-        const average = (sum / total).toFixed(2);
-        const excellent = gradesToCalculate.filter(grade => grade.grade === 5).length;
-
-        if (this.currentUser.type === 'student') {
-            document.getElementById('studentAverageGrade').textContent = average;
-            document.getElementById('studentTotalGrades').textContent = total;
-            document.getElementById('studentExcellentGrades').textContent = excellent;
-        } else {
-            document.getElementById('averageGrade').textContent = average;
-            document.getElementById('totalGrades').textContent = total;
-            document.getElementById('excellentGrades').textContent = excellent;
-        }
-    }
-
-    resetStats() {
-        if (this.currentUser.type === 'student') {
-            document.getElementById('studentAverageGrade').textContent = '0.00';
-            document.getElementById('studentTotalGrades').textContent = '0';
-            document.getElementById('studentExcellentGrades').textContent = '0';
-        } else {
-            document.getElementById('averageGrade').textContent = '0.00';
-            document.getElementById('totalGrades').textContent = '0';
-            document.getElementById('excellentGrades').textContent = '0';
-        }
-    }
-
-    // Вспомогательные методы
-    setMinDate() {
-        const dateInput = document.getElementById('date');
-        const today = new Date().toISOString().split('T')[0];
-        dateInput.value = today;
-        dateInput.min = '2024-01-01';
-    }
-
-    resetGradeForm() {
-        document.getElementById('gradeForm').reset();
-        this.setMinDate();
-    }
-
-    checkAuth() {
-        const savedUser = localStorage.getItem('currentUser');
-        if (savedUser) {
-            this.currentUser = JSON.parse(savedUser);
-            this.showApp();
-        }
-    }
-
-    showApp() {
-        document.getElementById('authContainer').style.display = 'none';
-        document.getElementById('appContainer').style.display = 'block';
-        
-        // Сохраняем пользователя
-        localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-        
-        // Показываем соответствующий интерфейс
-        if (this.currentUser.type === 'teacher') {
-            document.getElementById('teacherInterface').style.display = 'block';
-            document.getElementById('studentInterface').style.display = 'none';
-        } else {
-            document.getElementById('teacherInterface').style.display = 'none';
-            document.getElementById('studentInterface').style.display = 'block';
-        }
-        
-        // Обновляем информацию о пользователе
-        document.getElementById('userInfo').innerHTML = `
-            ${this.escapeHtml(this.currentUser.name)}
-            <span class="user-role">${this.currentUser.type === 'teacher' ? 'Учитель' : 'Ученик'}</span>
+        const studentCount = Object.keys(group.students).length;
+        const groupElement = document.createElement('div');
+        groupElement.className = 'group-item';
+        groupElement.innerHTML = `
+            <h4>${group.name}</h4>
+            <p>Код: ${groupCode} | Учеников: ${studentCount}</p>
+            <button onclick="viewGroup('${groupCode}')">Открыть</button>
+            <button onclick="deleteGroup('${groupCode}')" style="background: #f44336;">Удалить</button>
         `;
+        groupsList.appendChild(groupElement);
+    });
+}
+
+// Просмотр группы
+function viewGroup(groupCode) {
+    currentGroupCode = groupCode;
+    const group = groups[groupCode];
+    
+    hideAllScreens();
+    document.getElementById('groupView').classList.add('active');
+    document.getElementById('groupViewTitle').textContent = group.name;
+    
+    const studentsContainer = document.getElementById('studentsInGroup');
+    studentsContainer.innerHTML = '';
+
+    const students = Object.entries(group.students);
+    if (students.length === 0) {
+        studentsContainer.innerHTML = '<p>В группе пока нет учеников</p>';
+        return;
+    }
+
+    students.forEach(([studentName, studentData]) => {
+        const studentElement = document.createElement('div');
+        studentElement.className = 'student-item';
         
-        this.loadGrades();
-    }
-
-    logout() {
-        this.currentUser = null;
-        localStorage.removeItem('currentUser');
-        document.getElementById('appContainer').style.display = 'none';
-        document.getElementById('authContainer').style.display = 'flex';
-        this.switchAuthTab('login');
-        this.resetForms();
-    }
-
-    resetForms() {
-        document.getElementById('loginFormElement').reset();
-        document.getElementById('registerFormElement').reset();
-        this.hideAllErrors();
-    }
-
-    hideAllErrors() {
-        document.querySelectorAll('.error-message').forEach(error => {
-            error.style.display = 'none';
-        });
-    }
-
-    showError(elementId, message) {
-        const element = document.getElementById(elementId);
-        element.textContent = message;
-        element.style.display = 'block';
-    }
-
-    saveUsers() {
-        localStorage.setItem('mathGradesUsers', JSON.stringify(this.users));
-    }
-
-    saveGrades() {
-        localStorage.setItem('mathGrades', JSON.stringify(this.grades));
-    }
-
-    showNotification(message, type = 'success') {
-        const notification = document.getElementById('notification');
-        notification.textContent = message;
-        notification.className = `notification ${type} show`;
+        let gradesHtml = '';
+        if (studentData.grades && studentData.grades.length > 0) {
+            gradesHtml = studentData.grades.map(grade => 
+                `<span class="grade-item">${grade}</span>`
+            ).join('');
+        } else {
+            gradesHtml = '<p>Оценок нет</p>';
+        }
         
-        setTimeout(() => {
-            notification.classList.remove('show');
-        }, 3000);
-    }
+        studentElement.innerHTML = `
+            <h4>${studentName}</h4>
+            <div>Оценки: ${gradesHtml}</div>
+            <div style="margin-top: 10px;">
+                <input type="number" id="grade-${studentName}" class="grade-input" min="1" max="5" placeholder="5">
+                <button class="add-grade-btn" onclick="addGrade('${studentName}')">Добавить</button>
+            </div>
+        `;
+        studentsContainer.appendChild(studentElement);
+    });
+}
 
-    formatDate(dateString) {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('ru-RU');
+// Добавить оценку
+function addGrade(studentName) {
+    const gradeInput = document.getElementById(`grade-${studentName}`);
+    const grade = parseInt(gradeInput.value);
+    
+    if (grade >= 1 && grade <= 5) {
+        if (!groups[currentGroupCode].students[studentName].grades) {
+            groups[currentGroupCode].students[studentName].grades = [];
+        }
+        groups[currentGroupCode].students[studentName].grades.push(grade);
+        saveGroups();
+        viewGroup(currentGroupCode); // Обновляем вид
+    } else {
+        alert('Введите оценку от 1 до 5!');
     }
+    gradeInput.value = '';
+}
 
-    escapeHtml(unsafe) {
-        return unsafe
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
+// Удалить группу
+function deleteGroup(groupCode) {
+    if (confirm('Удалить эту группу?')) {
+        // Удаляем группу у учителя
+        teachers[currentTeacher].groups = teachers[currentTeacher].groups.filter(code => code !== groupCode);
+        // Удаляем саму группу
+        delete groups[groupCode];
+        
+        saveGroups();
+        saveTeachers();
+        loadGroupsList();
     }
 }
 
-// Инициализация при загрузке страницы
-document.addEventListener('DOMContentLoaded', () => {
-    new GradeManager();
-});
+// Назад к панели учителя
+function backToTeacherPanel() {
+    hideAllScreens();
+    document.getElementById('teacherPanel').classList.add('active');
+}
 
-// Добавляем стили для пустого состояния
-const style = document.createElement('style');
-style.textContent = `
-    .no-grades {
-        text-align: center;
-        padding: 40px;
-        color: #666;
-        font-style: italic;
-        background: #f8f9fa;
-        border-radius: 8px;
-        border: 2px dashed #dee2e6;
+// Вход ученика в группу
+function joinGroup() {
+    const studentName = document.getElementById('studentName').value.trim();
+    const groupCode = document.getElementById('groupCodeInput').value.toUpperCase();
+    
+    if (!studentName || !groupCode) {
+        alert('Заполните все поля!');
+        return;
     }
-`;
-document.head.appendChild(style);
+    
+    if (!groups[groupCode]) {
+        alert('Группа не найдена!');
+        return;
+    }
+    
+    // Регистрируем ученика в группе
+    if (!groups[groupCode].students[studentName]) {
+        groups[groupCode].students[studentName] = {
+            grades: []
+        };
+        saveGroups();
+    }
+    
+    currentStudent = studentName;
+    currentGroupCode = groupCode;
+    
+    // Показываем панель ученика
+    hideAllScreens();
+    document.getElementById('studentPanel').classList.add('active');
+    loadStudentInfo();
+}
 
+// Загрузить информацию ученика
+function loadStudentInfo() {
+    const studentInfo = document.getElementById('studentInfo');
+    const gradesList = document.getElementById('gradesList');
+    const studentData = groups[currentGroupCode].students[currentStudent];
+    
+    studentInfo.innerHTML = `
+        <div class="student-item">
+            <h3>${currentStudent}</h3>
+            <p>Группа: ${groups[currentGroupCode].name}</p>
+        </div>
+    `;
+    
+    if (studentData.grades && studentData.grades.length > 0) {
+        const averageGrade = (studentData.grades.reduce((a, b) => a + b, 0) / studentData.grades.length).toFixed(2);
+        gradesList.innerHTML = `
+            <div class="section">
+                <h3>Мои оценки</h3>
+                <p>Средний балл: <strong>${averageGrade}</strong></p>
+                <div>${studentData.grades.map(grade => `<span class="grade-item">${grade}</span>`).join('')}</div>
+            </div>
+        `;
+    } else {
+        gradesList.innerHTML = '<div class="section"><p>Оценок пока нет</p></div>';
+    }
+}
+
+// Выход
+function logout() {
+    currentTeacher = '';
+    currentStudent = '';
+    currentGroupCode = '';
+    showMainScreen();
+}
+
+//Сохранение данных
+function saveTeachers() {
+    localStorage.setItem('mathTeachers', JSON.stringify(teachers));
+}
+
+function saveGroups() {
+    localStorage.setItem('mathGroups', JSON.stringify(groups));
+}
+
+// Скрыть все экраны
+function hideAllScreens() {
+    const screens = document.querySelectorAll('.screen');
+    screens.forEach(screen => screen.classList.remove('active'));
+}
+
+// Запуск
+showMainScreen();
