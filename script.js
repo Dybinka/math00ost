@@ -150,7 +150,7 @@ function viewGroup(groupCode) {
             <h4>${studentName}</h4>
             <div>Оценки: ${gradesHtml}</div>
             <div class="grade-inputs">
-                <input type="number" id="grade-${studentName}" class="grade-input" min="1" max="5" placeholder="5">
+                <input type="number" id="grade-${studentName}" class="grade-input" min="2" max="5" placeholder="5">
                 <input type="text" id="topic-${studentName}" class="topic-input" placeholder="Тема (например: Дроби)">
                 <button class="add-grade-btn" onclick="addGrade('${studentName}')">Добавить</button>
             </div>
@@ -307,4 +307,5 @@ function hideAllScreens() {
 
 // Запуск
 showMainScreen();
+
 
