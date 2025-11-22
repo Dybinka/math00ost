@@ -68,7 +68,26 @@
             <button onclick="logout()">Выйти</button>
         </div>
     </div>
+<script type="module">
+ 
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-analytics.js";
+ 
+  const firebaseConfig = {
+    apiKey: "AIzaSyDW6uJ4CgTzjM8KyH-tPBwBbMWMQD5y_o8",
+    authDomain: "mathboost-477c4.firebaseapp.com",
+    projectId: "mathboost-477c4",
+    storageBucket: "mathboost-477c4.firebasestorage.app",
+    messagingSenderId: "823095628316",
+    appId: "1:823095628316:web:0edd054b04d3e6d7b905d9",
+    measurementId: "G-FEP5X40KSR"
+  };
 
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
     <script src="script.js"></script>
 </body>
+
 </html>
