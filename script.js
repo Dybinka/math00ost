@@ -166,7 +166,7 @@ function addGrade(studentName) {
     const grade = parseInt(gradeInput.value);
     const topic = topicInput.value.trim() || 'Без темы';
     
-    if (grade >= 1 && grade <= 5) {
+    if (grade >= 2 && grade <= 5) {
         if (!groups[currentGroupCode].students[studentName].grades) {
             groups[currentGroupCode].students[studentName].grades = [];
         }
@@ -181,7 +181,7 @@ function addGrade(studentName) {
         saveGroups();
         viewGroup(currentGroupCode); // Обновляем вид
     } else {
-        alert('Введите оценку от 1 до 5!');
+        alert('Введите оценку от 2 до 5!');
     }
     gradeInput.value = '';
     topicInput.value = '';
@@ -307,3 +307,4 @@ function hideAllScreens() {
 
 // Запуск
 showMainScreen();
+
