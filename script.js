@@ -7,36 +7,21 @@ let currentGroupCode = '';
 
 // Система сохранения данных
 const StorageManager = {
-    // Ключи для LocalStorage
     keys: {
         TEACHERS: 'mathTeachers',
         GROUPS: 'mathGroups'
     },
 
-    // Безопасное сохранение данных
     setItem(key, value) {
         try {
             localStorage.setItem(key, JSON.stringify(value));
-            console.log('Данные сохранены:', key);
             return true;
         } catch (error) {
             console.error('Ошибка сохранения:', error);
-            // Попытка очистки старых данных при переполнении
-            if (error.name === 'QuotaExceededError') {
-                this.clearOldData();
-                try {
-                    localStorage.setItem(key, JSON.stringify(value));
-                    return true;
-                } catch (e) {
-                    console.error('Не удалось сохранить после очистки:', e);
-                    alert('Недостаточно места для сохранения данных. Очистите кэш браузера.');
-                }
-            }
             return false;
         }
     },
 
-    // Безопасная загрузка данных
     getItem(key) {
         try {
             const item = localStorage.getItem(key);
@@ -45,111 +30,46 @@ const StorageManager = {
             console.error('Ошибка загрузки:', error);
             return null;
         }
-    },
-
-    // Очистка старых данных (резервный метод)
-    clearOldData() {
-        const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith('temp_')) {
-                localStorage.removeItem(key);
-            }
-        }
-    },
-
-    // Проверка поддержки LocalStorage
-    isSupported() {
-        try {
-            const test = 'test';
-            localStorage.setItem(test, test);
-            localStorage.removeItem(test);
-            return true;
-        } catch (e) {
-            return false;
-        }
     }
 };
 
 // Инициализация данных при загрузке страницы
 function initializeData() {
-    if (!StorageManager.isSupported()) {
-        alert('Ваш браузер не поддерживает сохранение данных. Некоторые функции могут быть недоступны.');
-        return;
-    }
-
-    // Загружаем данные
     teachers = StorageManager.getItem(StorageManager.keys.TEACHERS) || {};
     groups = StorageManager.getItem(StorageManager.keys.GROUPS) || {};
-
-    console.log('Данные загружены:', { teachers, groups });
 }
 
-// Автосохранение при любых изменениях
+// Автосохранение
 function autoSave() {
     saveTeachers();
     saveGroups();
 }
 
-// Улучшенное сохранение учителей
 function saveTeachers() {
-    const success = StorageManager.setItem(StorageManager.keys.TEACHERS, teachers);
-    if (!success) {
-        console.warn('Не удалось сохранить данные учителей');
-    }
-    return success;
+    StorageManager.setItem(StorageManager.keys.TEACHERS, teachers);
 }
 
-// Улучшенное сохранение групп
 function saveGroups() {
-    const success = StorageManager.setItem(StorageManager.keys.GROUPS, groups);
-    if (!success) {
-        console.warn('Не удалось сохранить данные групп');
-    }
-    return success;
+    StorageManager.setItem(StorageManager.keys.GROUPS, groups);
 }
 
-// Сохранение при закрытии страницы
-window.addEventListener('beforeunload', function() {
-    autoSave();
-});
-
-// Сохранение при изменении видимости страницы
-document.addEventListener('visibilitychange', function() {
-    if (document.hidden) {
-        autoSave();
-    }
-});
-
-// Сохранение при выходе из приложения
-function logout() {
-    autoSave(); // Сохраняем перед выходом
-    currentTeacher = '';
-    currentStudent = '';
-    currentGroupCode = '';
-    showMainScreen();
-}
-
-// Показать главный экран
-function showMainScreen() {
+// ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ КНОПОК
+window.showMainScreen = function() {
     hideAllScreens();
     document.getElementById('mainScreen').classList.add('active');
 }
 
-// Показать вход для учителя
-function showTeacherLogin() {
+window.showTeacherLogin = function() {
     hideAllScreens();
     document.getElementById('teacherLogin').classList.add('active');
 }
 
-// Показать вход для ученика
-function showStudentLogin() {
+window.showStudentLogin = function() {
     hideAllScreens();
     document.getElementById('studentLogin').classList.add('active');
 }
 
-// Вход учителя
-function loginTeacher() {
+window.loginTeacher = function() {
     const teacherName = document.getElementById('teacherName').value.trim();
     
     if (!teacherName) {
@@ -159,13 +79,12 @@ function loginTeacher() {
 
     currentTeacher = teacherName;
     
-    // Сохраняем учителя если его нет
     if (!teachers[teacherName]) {
         teachers[teacherName] = {
             groups: [],
             createdAt: new Date().toISOString()
         };
-        autoSave(); // Сохраняем изменения
+        autoSave();
     }
 
     hideAllScreens();
@@ -174,8 +93,7 @@ function loginTeacher() {
     loadGroupsList();
 }
 
-// Создать группу
-function createGroup() {
+window.createGroup = function() {
     const groupName = document.getElementById('groupName').value.trim();
     
     if (!groupName) {
@@ -183,27 +101,21 @@ function createGroup() {
         return;
     }
 
-    // Генерация кода
     const groupCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     
-    // Создание группы
     groups[groupCode] = {
         name: groupName,
         teacher: currentTeacher,
         students: {},
-        createdAt: new Date().toISOString(),
-        lastModified: new Date().toISOString()
+        createdAt: new Date().toISOString()
     };
 
-    // Добавляем группу учителю
     teachers[currentTeacher].groups.push(groupCode);
+    autoSave();
 
-    autoSave(); // Сохраняем изменения
-
-    // Показываем код
     document.getElementById('groupCodeDisplay').innerHTML = `
         <div class="code-display">
-            Код группы: ${groupCode}
+            Код группы: <strong>${groupCode}</strong>
         </div>
         <p>Дайте этот код ученикам</p>
     `;
@@ -212,8 +124,7 @@ function createGroup() {
     loadGroupsList();
 }
 
-// Загрузить список групп
-function loadGroupsList() {
+window.loadGroupsList = function() {
     const groupsList = document.getElementById('groupsList');
     const teacherGroups = teachers[currentTeacher]?.groups || [];
 
@@ -233,7 +144,6 @@ function loadGroupsList() {
         groupElement.innerHTML = `
             <h4>${group.name}</h4>
             <p>Код: ${groupCode} | Учеников: ${studentCount}</p>
-            <p><small>Создана: ${new Date(group.createdAt).toLocaleDateString()}</small></p>
             <button onclick="viewGroup('${groupCode}')">Открыть</button>
             <button onclick="deleteGroup('${groupCode}')" style="background: #f44336;">Удалить</button>
         `;
@@ -241,8 +151,7 @@ function loadGroupsList() {
     });
 }
 
-// Просмотр группы
-function viewGroup(groupCode) {
+window.viewGroup = function(groupCode) {
     currentGroupCode = groupCode;
     const group = groups[groupCode];
     
@@ -277,15 +186,14 @@ function viewGroup(groupCode) {
             <div>Оценки: ${gradesHtml}</div>
             <div style="margin-top: 10px;">
                 <input type="number" id="grade-${studentName}" class="grade-input" min="1" max="5" placeholder="5">
-                <button class="add-grade-btn" onclick="addGrade('${studentName}')">Добавить</button>
+                <button onclick="addGrade('${studentName}')">Добавить оценку</button>
             </div>
         `;
         studentsContainer.appendChild(studentElement);
     });
 }
 
-// Добавить оценку
-function addGrade(studentName) {
+window.addGrade = function(studentName) {
     const gradeInput = document.getElementById(`grade-${studentName}`);
     const grade = parseInt(gradeInput.value);
     
@@ -294,38 +202,29 @@ function addGrade(studentName) {
             groups[currentGroupCode].students[studentName].grades = [];
         }
         groups[currentGroupCode].students[studentName].grades.push(grade);
-        groups[currentGroupCode].lastModified = new Date().toISOString(); // Обновляем время изменения
-        
-        autoSave(); // Сохраняем изменения
-        viewGroup(currentGroupCode); // Обновляем вид
+        autoSave();
+        viewGroup(currentGroupCode);
     } else {
         alert('Введите оценку от 1 до 5!');
     }
     gradeInput.value = '';
 }
 
-// Удалить группу
-function deleteGroup(groupCode) {
+window.deleteGroup = function(groupCode) {
     if (confirm('Удалить эту группу?')) {
-        // Удаляем группу у учителя
         teachers[currentTeacher].groups = teachers[currentTeacher].groups.filter(code => code !== groupCode);
-        // Удаляем саму группу
         delete groups[groupCode];
-        
-        autoSave(); // Сохраняем изменения
+        autoSave();
         loadGroupsList();
     }
 }
 
-// Назад к панели учителя
-function backToTeacherPanel() {
-    autoSave(); // Сохраняем перед переходом
+window.backToTeacherPanel = function() {
     hideAllScreens();
     document.getElementById('teacherPanel').classList.add('active');
 }
 
-// Вход ученика в группу
-function joinGroup() {
+window.joinGroup = function() {
     const studentName = document.getElementById('studentName').value.trim();
     const groupCode = document.getElementById('groupCodeInput').value.toUpperCase();
     
@@ -339,27 +238,23 @@ function joinGroup() {
         return;
     }
     
-    // Регистрируем ученика в группе
     if (!groups[groupCode].students[studentName]) {
         groups[groupCode].students[studentName] = {
             grades: [],
             joinedAt: new Date().toISOString()
         };
-        groups[groupCode].lastModified = new Date().toISOString();
-        autoSave(); // Сохраняем изменения
+        autoSave();
     }
     
     currentStudent = studentName;
     currentGroupCode = groupCode;
     
-    // Показываем панель ученика
     hideAllScreens();
     document.getElementById('studentPanel').classList.add('active');
     loadStudentInfo();
 }
 
-// Загрузить информацию ученика
-function loadStudentInfo() {
+window.loadStudentInfo = function() {
     const studentInfo = document.getElementById('studentInfo');
     const gradesList = document.getElementById('gradesList');
     const studentData = groups[currentGroupCode].students[currentStudent];
@@ -368,7 +263,6 @@ function loadStudentInfo() {
         <div class="student-item">
             <h3>${currentStudent}</h3>
             <p>Группа: ${groups[currentGroupCode].name}</p>
-            <p><small>Присоединился: ${new Date(studentData.joinedAt).toLocaleDateString()}</small></p>
         </div>
     `;
     
@@ -378,7 +272,6 @@ function loadStudentInfo() {
             <div class="section">
                 <h3>Мои оценки</h3>
                 <p>Средний балл: <strong>${averageGrade}</strong></p>
-                <p>Всего оценок: <strong>${studentData.grades.length}</strong></p>
                 <div>${studentData.grades.map(grade => `<span class="grade-item">${grade}</span>`).join('')}</div>
             </div>
         `;
@@ -387,26 +280,25 @@ function loadStudentInfo() {
     }
 }
 
-// Скрыть все экраны
-function hideAllScreens() {
+window.logout = function() {
+    currentTeacher = '';
+    currentStudent = '';
+    currentGroupCode = '';
+    showMainScreen();
+}
+
+window.hideAllScreens = function() {
     const screens = document.querySelectorAll('.screen');
     screens.forEach(screen => screen.classList.remove('active'));
 }
 
-// Инициализируем данные при загрузке страницы
+// Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     initializeData();
     
-    // Периодическое автосохранение (каждые 30 секунд)
+    // Автосохранение каждые 30 секунд
     setInterval(autoSave, 30000);
     
-    // Сохранение при изменении данных в полях ввода
-    document.querySelectorAll('input').forEach(input => {
-        input.addEventListener('change', autoSave);
-    });
+    // Сохранение при закрытии страницы
+    window.addEventListener('beforeunload', autoSave);
 });
-}
-
-// Запуск
-
-showMainScreen();
