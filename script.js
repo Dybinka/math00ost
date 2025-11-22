@@ -138,12 +138,10 @@ function viewGroup(groupCode) {
         
         let gradesHtml = '';
         if (studentData.grades && studentData.grades.length > 0) {
+            // Оценки с темами через запятую
             gradesHtml = studentData.grades.map(grade => 
-                `<span class="grade-with-topic">
-                    ${grade.value}
-                    <span class="topic-badge">${grade.topic || 'Без темы'}</span>
-                </span>`
-            ).join('');
+                `${grade.value} (${grade.topic || 'Без темы'})`
+            ).join(', ');
         } else {
             gradesHtml = '<p>Оценок нет</p>';
         }
@@ -259,14 +257,13 @@ function loadStudentInfo() {
         const totalGrade = studentData.grades.reduce((sum, grade) => sum + grade.value, 0);
         const averageGrade = (totalGrade / studentData.grades.length).toFixed(2);
         
-        // Создаем список оценок с темами
+        // Создаем список оценок с темами через запятую
         let gradesHtml = '';
-        studentData.grades.forEach(grade => {
+        studentData.grades.forEach((grade, index) => {
             gradesHtml += `
                 <div class="grade-details">
                     <span class="grade-with-topic">
-                        ${grade.value}
-                        <span class="topic-badge">${grade.topic}</span>
+                        ${grade.value} (${grade.topic})
                     </span>
                     <small style="color: #666; margin-left: 10px;">${grade.date}</small>
                 </div>
